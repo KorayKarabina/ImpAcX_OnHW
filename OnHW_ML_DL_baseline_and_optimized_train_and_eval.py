@@ -10,6 +10,7 @@ from tsfresh.utilities.dataframe_functions import impute
 from tsfresh.feature_extraction import settings
 
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import NeighborhoodComponentsAnalysis
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
 from sklearn.neighbors import KNeighborsClassifier
@@ -29,6 +30,17 @@ ML_MODEL_AND_SCALER_DICT = {'SVM_rbf': [SVC(kernel='rbf', decision_function_shap
                          'ET': [ExtraTreesClassifier(criterion='gini', n_estimators=100, random_state=config.RANDOM_STATE), None],
                          'kNN': [KNeighborsClassifier(), QuantileTransformer(n_quantiles=1000, output_distribution='uniform', random_state=config.RANDOM_STATE)],
                          'LogReg': [LogisticRegression(random_state=config.RANDOM_STATE, max_iter=1000), QuantileTransformer(n_quantiles=1000, output_distribution='uniform', random_state=config.RANDOM_STATE)],
+                         }
+
+# A list of ML models for metric learning
+METRICLEARNING_MODEL_AND_SCALER_DICT = {
+                         'metriclearn_SVM_rbf': [SVC(kernel='rbf', decision_function_shape='ovo', random_state=config.RANDOM_STATE), QuantileTransformer(n_quantiles=1000, output_distribution='uniform', random_state=config.RANDOM_STATE)],
+                         'metriclearn_SVM_linear': [SVC(kernel='linear', decision_function_shape='ovo', random_state=config.RANDOM_STATE), QuantileTransformer(n_quantiles=1000, output_distribution='uniform', random_state=config.RANDOM_STATE)],
+                         'metriclearn_RFC': [RandomForestClassifier(criterion='gini', n_estimators=100, random_state=config.RANDOM_STATE), None],
+                         'metriclearn_DT': [DecisionTreeClassifier(criterion='gini', random_state=config.RANDOM_STATE), None],
+                         'metriclearn_ET': [ExtraTreesClassifier(criterion='gini', n_estimators=100, random_state=config.RANDOM_STATE), None],
+                         'metriclearn_kNN': [KNeighborsClassifier(), QuantileTransformer(n_quantiles=1000, output_distribution='uniform', random_state=config.RANDOM_STATE)],
+                         'metriclearn_LogReg': [LogisticRegression(random_state=config.RANDOM_STATE, max_iter=1000), QuantileTransformer(n_quantiles=1000, output_distribution='uniform', random_state=config.RANDOM_STATE)],
                          }
 
 # A list of DL baseline models
@@ -210,6 +222,32 @@ def OnHW_ML_train_and_save(case, dependency, k_fold_number, model_and_scaler_dic
         model.fit(train_X_features_transformed, train_y)
         folders_and_files.save_model(path_to_model, model_name, model)
 
+def OnHW_MetricLearn_train_and_save(case, dependency, k_fold_number, model_and_scaler_dict):
+    train_X, train_y, test_X, test_y, train_X_features, test_X_features = OnHW_ML_read_filtered_data_and_extracted_features(
+        case, dependency, k_fold_number)
+
+    train_X_features.sort_index(axis=1, inplace=True)
+
+    for name, model_and_scaler in model_and_scaler_dict.items():
+        print(f"[INFO] Training: {case}_{dependency}_{k_fold_number}_{name}")
+        folder_name = f"{case}_{dependency}_{k_fold_number}"
+        path_to_model = os.path.join(config.BASE_OUTPUT, config.ML_MODELS_AND_DATA, folder_name)
+        model_name, scaler_name, nca_name = f"nca_model_{name}", f"nca_scaler_{name}", f"nca_{name}"
+        model = model_and_scaler[0]
+
+        scaler = StandardScaler() # NCA requires scaled data
+        nca = NeighborhoodComponentsAnalysis(n_components=21, random_state=config.RANDOM_STATE)
+
+        train_X_features_transformed = scaler.fit_transform(train_X_features)
+        train_X_features_transformed = pd.DataFrame(train_X_features_transformed)
+        nca.fit(train_X_features_transformed, train_y)
+        train_X_features_transformed = nca.transform(train_X_features_transformed)
+        
+        folders_and_files.save_model(path_to_model, scaler_name, scaler)
+        folders_and_files.save_model(path_to_model, nca_name, nca)
+
+        model.fit(train_X_features_transformed, train_y)
+        folders_and_files.save_model(path_to_model, model_name, model)
 
 def OnHW_ML_load_a_model_and_scaler_by_name(case, dependency, k_fold_number, name):
     folder_name = f"{case}_{dependency}_{k_fold_number}"
@@ -219,6 +257,16 @@ def OnHW_ML_load_a_model_and_scaler_by_name(case, dependency, k_fold_number, nam
     scaler = folders_and_files.load_model(path_to_model, scaler_name)
 
     return model, scaler
+
+def OnHW_MetricLearn_load_a_model_and_scaler_by_name(case, dependency, k_fold_number, name):
+    folder_name = f"{case}_{dependency}_{k_fold_number}"
+    path_to_model = os.path.join(config.BASE_OUTPUT, config.ML_MODELS_AND_DATA, folder_name)
+    model_name, scaler_name, nca_name = f"nca_model_{name}", f"nca_scaler_{name}", f"nca_{name}"
+    model = folders_and_files.load_model(path_to_model, model_name)
+    scaler = folders_and_files.load_model(path_to_model, scaler_name)
+    nca = folders_and_files.load_model(path_to_model, nca_name)
+
+    return model, scaler, nca
 
 def OnHW_ML_evaluate_model(case, dependency, k_fold_number, name):
     model, scaler = OnHW_ML_load_a_model_and_scaler_by_name(case, dependency, k_fold_number, name)
@@ -238,11 +286,36 @@ def OnHW_ML_evaluate_model(case, dependency, k_fold_number, name):
 
     return accuracy, report, conf_mat
 
+def OnHW_MetricLearn_evaluate_model(case, dependency, k_fold_number, name):
+    model, scaler, nca = OnHW_MetricLearn_load_a_model_and_scaler_by_name(case, dependency, k_fold_number, name)
+
+    train_X, train_y, test_X, test_y, train_X_features, test_X_features = OnHW_ML_read_filtered_data_and_extracted_features(
+        case, dependency, k_fold_number)
+
+    test_X_features.sort_index(axis=1, inplace=True)
+
+    test_X_features_transformed = scaler.transform(test_X_features)
+    test_X_features_transformed = pd.DataFrame(test_X_features_transformed)
+    test_X_features_transformed = nca.transform(test_X_features_transformed)
+
+    preds = model.predict(test_X_features_transformed)
+    report = classification_report(test_y, preds, zero_division=1, digits=4)
+    conf_mat = confusion_matrix(test_y, preds)
+    accuracy = accuracy_score(test_y, preds)
+
+    return accuracy, report, conf_mat
+
 def OnHW_ML_train_all():
     for case in config.OnHW_CASE:
         for dependency in config.OnHW_DEPENDENCY:
             for k_fold_number in config.OnHW_FOLD:
                 OnHW_ML_train_and_save(case, dependency, k_fold_number, ML_MODEL_AND_SCALER_DICT)
+
+def OnHW_MetricLearn_train_all():
+    for case in config.OnHW_CASE:
+        for dependency in config.OnHW_DEPENDENCY:
+            for k_fold_number in config.OnHW_FOLD:
+                OnHW_MetricLearn_train_and_save(case, dependency, k_fold_number, METRICLEARNING_MODEL_AND_SCALER_DICT)
 
 def OnHW_ML_evaluate_all():
     path_to_results = os.path.join(config.BASE_OUTPUT, config.ML_RESULTS, config.ML_RESULTS_CSV)
@@ -252,6 +325,29 @@ def OnHW_ML_evaluate_all():
                 for name in ML_MODEL_AND_SCALER_DICT.keys():
                     print(f"[INFO] Evaluating: {case}_{dependency}_{k_fold_number}_{name}")
                     accuracy, report, conf_mat = OnHW_ML_evaluate_model(case, dependency, k_fold_number, name)
+                    L = [[case, dependency, k_fold_number, name, accuracy]]
+                    df_results = pd.DataFrame(L, columns=['case', 'dependency', 'fold', 'model', 'accuracy'])
+                    if os.path.exists(path_to_results):
+                        df_results.to_csv(path_to_results, mode = 'a', index=False, header=False)
+                    else:
+                        df_results.to_csv(path_to_results, index = False)
+
+                    classification_report_file = os.path.join(config.BASE_OUTPUT, config.ML_RESULTS, f"classification_report_{case}_{dependency}_{k_fold_number}_{name}.txt")
+                    with open(classification_report_file, 'w') as f:
+                        print(report, file=f)
+
+                    conf_mat_csv_file = os.path.join(config.BASE_OUTPUT, config.ML_RESULTS, f"conf_mat_{case}_{dependency}_{k_fold_number}_{name}.csv")
+                    df_conf_mat = pd.DataFrame(conf_mat)
+                    df_conf_mat.to_csv(conf_mat_csv_file, index=False)
+
+def OnHW_MetricLearn_evaluate_all():
+    path_to_results = os.path.join(config.BASE_OUTPUT, config.ML_RESULTS, config.ML_RESULTS_CSV)
+    for case in config.OnHW_CASE:
+        for dependency in config.OnHW_DEPENDENCY:
+            for k_fold_number in config.OnHW_FOLD:
+                for name in METRICLEARNING_MODEL_AND_SCALER_DICT.keys():
+                    print(f"[INFO] Evaluating: {case}_{dependency}_{k_fold_number}_{name}")
+                    accuracy, report, conf_mat = OnHW_MetricLearn_evaluate_model(case, dependency, k_fold_number, name)
                     L = [[case, dependency, k_fold_number, name, accuracy]]
                     df_results = pd.DataFrame(L, columns=['case', 'dependency', 'fold', 'model', 'accuracy'])
                     if os.path.exists(path_to_results):
@@ -474,6 +570,13 @@ if __name__ == "__main__":
     OnHW_ML_filter_and_extract()
     OnHW_ML_train_all()
     OnHW_ML_evaluate_all()
+
+    '''Run OnHW_MetricLearn_train_all() and OnHW_MetricLearn_evaluate_all() to train and evaluate metric learning models
+    Run OnHW_ML_filter_and_extract() prior to running Metric Learning algorithms to extract features
+    '''
+    OnHW_MetricLearn_train_all()
+    OnHW_MetricLearn_evaluate_all()
+
 
     '''No need to run 'filtering functions' as filtered data has already been generated during OnHW_ML_filter_and_extract() above
     Also assumes the 'output' folder already exists (created in the beginning of the ML train/evaluate process above). 
