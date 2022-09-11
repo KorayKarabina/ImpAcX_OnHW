@@ -1,4 +1,4 @@
-# OnHW-chars_models:
+# ImpAcX_OnHW: Improving Accuracy and Explainability of Handwriting Recognition Models
 
 This project contains codes and information to help reproduce, verify and improve results as reported in our paper "*Improving Accuracy and Explainability of Handwriting Recognition Models*" - available at **[TBA]()**.
 
