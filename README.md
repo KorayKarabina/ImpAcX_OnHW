@@ -1,24 +1,25 @@
 # ImpAcX_OnHW: Improving Accuracy and Explainability of Handwriting Recognition Models
 
-This project contains codes and information to help reproduce, verify and improve results as reported in our paper "*Improving Accuracy and Explainability of Handwriting Recognition Models*" - available at **[TBA]()**.
+This project contains codes and information to help reproduce, verify and improve results as reported in our paper [Improving Accuracy and Explainability of Handwriting Recognition Models](https://arxiv.org/abs/2209.09102).
 
 ## How to cite this project?
 
 If you use this project in your research or development, please cite it as
 
 ```
-@article{impacx_onhw,
+@misc{impacx_onhw,
   author = {H. Azimi and S. Chang and J. Gold and K. Karabina},
   title = {{Improving Accuracy and Explainability of Handwriting Recognition Models}},
-  journal = {},
-  volume = {},
   year = {2022},
+  publisher = {arXiv},
   pages = {1-20},
-  url = {TBA},
-  doi = {}
+  url = {https://arxiv.org/abs/2209.09102},
+  doi = {10.48550/ARXIV.2209.09102},
+  copyright = {Creative Commons Attribution 4.0 International}
 }
 
 ```
+
 
 ***
 
